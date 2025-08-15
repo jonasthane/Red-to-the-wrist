@@ -13,19 +13,32 @@
     position: sticky; top:0; z-index:5; padding:10px; background:#181818; border-bottom:1px solid #222;
   }
   button { background:#2a2a2a; color:#eee; border:1px solid #333; padding:6px 10px; border-radius:6px; cursor:pointer; }
-  .pageinfo { opacity:.85; font-size:14px; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .pageinfo { opacity:.85; font-size:14px; min-width:90px; text-align:center; }
   #viewer { height: 90vh; overflow:auto; -webkit-overflow-scrolling:touch; display:flex; justify-content:center; }
-  canvas { background:#fff; margin:14px 0; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+  canvas { background:#fff; margin:14px 0; box-shadow: 0 2px 10px rgba(0,0,0,.25); touch-action: manipulation; }
+  /* big invisible tap zones for mobile (optional) */
+  .tapzone { position:absolute; top:0; bottom:0; width:50%; }
+  .left { left:0; } .right { right:0; }
+  .stage { position:relative; }
 </style>
 </head>
 <body>
   <div class="wrap">
     <div class="toolbar">
-      <button id="zoomOut" aria-label="Zoom out">−</button>
+      <button id="prev" aria-label="Previous page">◀</button>
       <div class="pageinfo"><span id="pageNum">1</span> / <span id="pageCount">?</span></div>
+      <button id="next" aria-label="Next page">▶</button>
+      <button id="zoomOut" aria-label="Zoom out">−</button>
       <button id="zoomIn" aria-label="Zoom in">+</button>
     </div>
-    <div id="viewer"><canvas id="page"></canvas></div>
+    <div id="viewer">
+      <div class="stage">
+        <canvas id="page"></canvas>
+        <div class="tapzone left" id="tapLeft"></div>
+        <div class="tapzone right" id="tapRight"></div>
+      </div>
+    </div>
   </div>
 
   <!-- PDF.js from CDN -->
@@ -37,29 +50,52 @@
     // Your PDF (jsDelivr link to your exact commit)
     const PDF_URL = "https://cdn.jsdelivr.net/gh/jonasthane/Red-to-the-wrist@1667fdace2cfa0065cedb83f384b1e3f24c9a9cf/Red-to-the-wrist.pdf";
 
+    // UI
     const canvas = document.getElementById('page');
     const ctx = canvas.getContext('2d');
     const pageNumEl = document.getElementById('pageNum');
     const pageCountEl = document.getElementById('pageCount');
     const zoomInBtn = document.getElementById('zoomIn');
     const zoomOutBtn = document.getElementById('zoomOut');
+    const prevBtn = document.getElementById('prev');
+    const nextBtn = document.getElementById('next');
+    const viewer = document.getElementById('viewer');
+    const tapLeft = document.getElementById('tapLeft');
+    const tapRight = document.getElementById('tapRight');
 
+    // State
     let pdf = null, pageNum = 1, scale = 1.1;
     const MIN = 0.6, MAX = 3.0;
+
+    function updateButtons() {
+      prevBtn.disabled = (pageNum <= 1);
+      nextBtn.disabled = (pdf ? pageNum >= pdf.numPages : true);
+    }
 
     function render(num) {
       pdf.getPage(num).then(p => {
         const vp = p.getViewport({ scale });
-        // Fit to viewport width
-        const targetW = Math.min(vp.width, window.innerWidth*0.98, 900);
+        // Fit width to viewport (capped at 900px)
+        const targetW = Math.min(vp.width, window.innerWidth * 0.98, 900);
         const fitScale = targetW / vp.width;
         const vpf = p.getViewport({ scale: scale * fitScale });
         canvas.width = vpf.width;
         canvas.height = vpf.height;
         p.render({ canvasContext: ctx, viewport: vpf }).promise.then(() => {
           pageNumEl.textContent = num;
+          updateButtons();
         });
       });
+    }
+
+    function gotoPage(n) {
+      if (!pdf) return;
+      const clamped = Math.max(1, Math.min(pdf.numPages, n));
+      if (clamped !== pageNum) {
+        pageNum = clamped;
+        render(pageNum);
+        viewer.scrollTop = 0; // keep top-aligned each page
+      }
     }
 
     function zoom(delta) {
@@ -67,24 +103,46 @@
       render(pageNum);
     }
 
+    // Button events
+    nextBtn.onclick = () => gotoPage(pageNum + 1);
+    prevBtn.onclick = () => gotoPage(pageNum - 1);
     zoomInBtn.onclick = () => zoom(0.15);
     zoomOutBtn.onclick = () => zoom(-0.15);
+
+    // Click/tap zones over the canvas
+    tapRight.onclick = () => gotoPage(pageNum + 1);
+    tapLeft.onclick  = () => gotoPage(pageNum - 1);
+
+    // Keyboard: arrows to change pages; +/- to zoom
+    window.addEventListener('keydown', (e) => {
+      if (!pdf) return;
+      if (e.key === 'ArrowRight') gotoPage(pageNum + 1);
+      else if (e.key === 'ArrowLeft') gotoPage(pageNum - 1);
+      else if (e.key === '+' || e.key === '=') zoom(0.15);
+      else if (e.key === '-' || e.key === '_') zoom(-0.15);
+    });
+
+    // Touch swipe (left/right)
+    let startX = null;
+    viewer.addEventListener('touchstart', (e) => { startX = e.changedTouches[0].clientX; }, {passive:true});
+    viewer.addEventListener('touchend', (e) => {
+      if (startX == null) return;
+      const dx = e.changedTouches[0].clientX - startX;
+      if (Math.abs(dx) > 40) {
+        if (dx < 0) gotoPage(pageNum + 1); // swipe left → next
+        else gotoPage(pageNum - 1);        // swipe right → prev
+      }
+      startX = null;
+    }, {passive:true});
+
+    // Re-render on resize
     window.addEventListener('resize', () => render(pageNum));
 
-    // Simple wheel nav at top/bottom
-    const viewer = document.getElementById('viewer');
-    viewer.addEventListener('wheel', e => {
-      if (!pdf) return;
-      if (e.deltaY > 0 && viewer.scrollTop + viewer.clientHeight >= viewer.scrollHeight - 4 && pageNum < pdf.numPages) {
-        pageNum++; render(pageNum);
-      } else if (e.deltaY < 0 && viewer.scrollTop <= 4 && pageNum > 1) {
-        pageNum--; render(pageNum);
-      }
-    }, { passive:true });
-
+    // Load the PDF
     pdfjsLib.getDocument(PDF_URL).promise.then(doc => {
       pdf = doc;
       pageCountEl.textContent = doc.numPages;
+      updateButtons();
       render(pageNum);
     }).catch(err => {
       ctx.font = "16px sans-serif"; ctx.fillStyle = "#fff";
