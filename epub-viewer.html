@@ -2,26 +2,54 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>EPUB Viewer</title>
+  <title>Red to the Wrist</title>
   <style>
-    html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
-    #viewer { width: 100%; height: 100%; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background-color: #000;
+      overflow: hidden;
+    }
+    #viewer {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    iframe {
+      border: none;
+    }
   </style>
 </head>
 <body>
   <div id="viewer"></div>
 
-  <!-- EPUB.js from CDN -->
+  <!-- Load EPUB.js -->
   <script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.min.js"></script>
-
   <script>
-    const book = ePub("Red-to-the-wrist.epub");
+    const book = ePub("https://raw.githubusercontent.com/jonasthane/Red-to-the-wrist/main/Red-to-the-wrist.epub");
     const rendition = book.renderTo("viewer", {
       width: "100%",
       height: "100%",
-      spread: "none"
+      spread: "none",
+      flow: "paginated",  // Optional: Try "scrolled-doc" for scroll style
+      allowScriptedContent: true
     });
-    rendition.display();
+
+    rendition.display().then(() => {
+      rendition.themes.default({
+        body: {
+          margin: "0 auto",
+          maxWidth: "600px",
+          fontSize: "100%",
+        }
+      });
+    }).catch((err) => {
+      document.body.innerHTML = "<p style='color:white;text-align:center;padding-top:2rem;'>Failed to load EPUB. Check file URL and layout.</p>";
+      console.error(err);
+    });
   </script>
 </body>
 </html>
