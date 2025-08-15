@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>PDF Viewer (Minimal)</title>
+<style>
+  :root { --maxw: 900px; }
+  body { margin: 0; background:#111; color:#eee; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 10px; }
+  .toolbar {
+    display:flex; align-items:center; gap:10px; justify-content:center;
+    padding:8px 10px; background:#181818; position: sticky; top:0; z-index: 10; border-bottom:1px solid #222;
+  }
+  button { background:#2a2a2a; color:#eee; border:1px solid #333; padding:6px 10px; border-radius:6px; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .pageinfo { opacity:.8; font-size:14px; }
+  #viewerContainer { height: 90vh; overflow:auto; -webkit-overflow-scrolling: touch; display:flex; justify-content:center; }
+  canvas { background:#fff; margin: 12px 0; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="toolbar">
+      <button id="zoomOut" title="Zoom out">−</button>
+      <div class="pageinfo"><span id="pageNum">1</span> / <span id="pageCount">?</span></div>
+      <button id="zoomIn" title="Zoom in">+</button>
+    </div>
+    <div id="viewerContainer"><canvas id="pdfCanvas"></canvas></div>
+  </div>
+
+  <!-- Load PDF.js from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script>
+    // Point pdfjs to its worker (also on CDN)
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+
+    // DEFAULT PDF — you can hardcode yours here, or pass ?file=URL at runtime
+    const DEFAULT_PDF_URL = "https://cdn.jsdelivr.net/gh/jonasthane/Red-to-the-wrist@3566f88d5cda796a93de5635255ee00587529612/RED%20TO%20THE%20WRIST%20PDF.pdf";
+
+    // Use ?file=<encoded URL> if provided
+    const urlParams = new URLSearchParams(location.search);
+    const pdfUrl = urlParams.get('file') ? decodeURIComponent(urlParams.get('file')) : DEFAULT_PDF_URL;
+
+    const canvas = document.getElementById('pdfCanvas');
+    const ctx = canvas.getContext('2d');
+    const pageNumSpan = document.getElementById('pageNum');
+    const pageCountSpan = document.getElementById('pageCount');
+    const zoomInBtn = document.getElementById('zoomIn');
+    const zoomOutBtn = document.getElementById('zoomOut');
+
+    let pdfDoc = null;
+    let pageNum = 1;
+    let scale = 1.15; // start zoom
+    const MIN_SCALE = 0.6;
+    const MAX_SCALE = 3.0;
+
+    function renderPage(num) {
+      pdfDoc.getPage(num).then(function(page) {
+        const viewport = page.getViewport({ scale });
+        canvas.width = Math.min(viewport.width, window.innerWidth * 0.98);
+        const scaleAdjust = canvas.width / viewport.width;
+        const adjustedViewport = page.getViewport({ scale: scale * scaleAdjust });
+        canvas.height = adjustedViewport.height;
+
+        const renderContext = {
+          canvasContext: ctx,
+          viewport: adjustedViewport
+        };
+        page.render(renderContext).promise.then(function () {
+          pageNumSpan.textContent = num;
+        });
+      });
+    }
+
+    function queueRenderPage(num) { renderPage(num); }
+
+    function onZoom(delta) {
+      scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale + delta));
+      queueRenderPage(pageNum);
+    }
+
+    zoomInBtn.addEventListener('click', () => onZoom(0.15));
+    zoomOutBtn.addEventListener('click', () => onZoom(-0.15));
+
+    // Load PDF
+    pdfjsLib.getDocument(pdfUrl).promise.then(function(pdf) {
+      pdfDoc = pdf;
+      pageCountSpan.textContent = pdf.numPages;
+      renderPage(pageNum);
+      // Simple scroll-to-next/prev by wheel (optional)
+      const viewer = document.getElementById('viewerContainer');
+      viewer.addEventListener('wheel', (e) => {
+        if (e.deltaY > 0 && pageNum < pdfDoc.numPages && viewer.scrollTop + viewer.clientHeight >= viewer.scrollHeight - 5) {
+          pageNum++; renderPage(pageNum);
+        } else if (e.deltaY < 0 && pageNum > 1 && viewer.scrollTop <= 5) {
+          pageNum--; renderPage(pageNum);
+        }
+      }, { passive: true });
+    }).catch(err => {
+      console.error(err);
+      ctx.font = "16px sans-serif";
+      ctx.fillStyle = "#fff";
+      ctx.fillText("Failed to load PDF.", 20, 30);
+    });
+
+    // Re-render on resize to keep centered/fit
+    window.addEventListener('resize', () => queueRenderPage(pageNum));
+  </script>
+</body>
+</html>
