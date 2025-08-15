@@ -1,32 +1,32 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Red to the Wrist (EPUB)</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Red to the Wrist (EPUB Viewer)</title>
   <style>
     html, body {
       margin: 0;
+      padding: 0;
       height: 100%;
-      background-color: #111;
+      background: #000;
     }
     #viewer {
       height: 100vh;
       width: 100vw;
     }
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.min.js"></script>
 </head>
 <body>
-  <div id="viewer"></div>
-  <script>
-    const book = ePub("https://cdn.jsdelivr.net/gh/jonasthane/Red-to-the-wrist@b3337d44e8b3278898e153990c3b871ba19fecc7/Red-to-the-wrist.epub");
-    const rendition = book.renderTo("viewer", {
-      width: "100%",
-      height: "100%",
-      flow: "paginated",
-      manager: "continuous"
-    });
-    rendition.display();
-  </script>
+  <iframe 
+    src="https://epubjs-reader.vercel.app/?epub=https%3A%2F%2Fcdn.jsdelivr.net%2Fgh%2Fjonasthane%2FRed-to-the-wrist%40b3337d44e8b3278898e153990c3b871ba19fecc7%2FRed-to-the-wrist.epub" 
+    id="viewer"
+    allowfullscreen
+  ></iframe>
 </body>
 </html>
