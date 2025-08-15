@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>PDF (Minimal Viewer)</title>
+<style>
+  :root { --maxw: 900px; }
+  body { margin: 0; background:#111; color:#eee; font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
+  .wrap { max-width: var(--maxw); margin: 0 auto; }
+  .toolbar {
+    display:flex; align-items:center; justify-content:center; gap:12px;
+    position: sticky; top:0; z-index:5; padding:10px; background:#181818; border-bottom:1px solid #222;
+  }
+  button { background:#2a2a2a; color:#eee; border:1px solid #333; padding:6px 10px; border-radius:6px; cursor:pointer; }
+  .pageinfo { opacity:.85; font-size:14px; }
+  #viewer { height: 90vh; overflow:auto; -webkit-overflow-scrolling:touch; display:flex; justify-content:center; }
+  canvas { background:#fff; margin:14px 0; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="toolbar">
+      <button id="zoomOut" aria-label="Zoom out">−</button>
+      <div class="pageinfo"><span id="pageNum">1</span> / <span id="pageCount">?</span></div>
+      <button id="zoomIn" aria-label="Zoom in">+</button>
+    </div>
+    <div id="viewer"><canvas id="page"></canvas></div>
+  </div>
+
+  <!-- PDF.js from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script>
+    // Worker path for PDF.js
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+
+    // Your PDF (jsDelivr link to your exact commit)
+    const PDF_URL = "https://cdn.jsdelivr.net/gh/jonasthane/Red-to-the-wrist@1667fdace2cfa0065cedb83f384b1e3f24c9a9cf/Red-to-the-wrist.pdf";
+
+    const canvas = document.getElementById('page');
+    const ctx = canvas.getContext('2d');
+    const pageNumEl = document.getElementById('pageNum');
+    const pageCountEl = document.getElementById('pageCount');
+    const zoomInBtn = document.getElementById('zoomIn');
+    const zoomOutBtn = document.getElementById('zoomOut');
+
+    let pdf = null, pageNum = 1, scale = 1.1;
+    const MIN = 0.6, MAX = 3.0;
+
+    function render(num) {
+      pdf.getPage(num).then(p => {
+        const vp = p.getViewport({ scale });
+        // Fit to viewport width
+        const targetW = Math.min(vp.width, window.innerWidth*0.98, 900);
+        const fitScale = targetW / vp.width;
+        const vpf = p.getViewport({ scale: scale * fitScale });
+        canvas.width = vpf.width;
+        canvas.height = vpf.height;
+        p.render({ canvasContext: ctx, viewport: vpf }).promise.then(() => {
+          pageNumEl.textContent = num;
+        });
+      });
+    }
+
+    function zoom(delta) {
+      scale = Math.max(MIN, Math.min(MAX, scale + delta));
+      render(pageNum);
+    }
+
+    zoomInBtn.onclick = () => zoom(0.15);
+    zoomOutBtn.onclick = () => zoom(-0.15);
+    window.addEventListener('resize', () => render(pageNum));
+
+    // Simple wheel nav at top/bottom
+    const viewer = document.getElementById('viewer');
+    viewer.addEventListener('wheel', e => {
+      if (!pdf) return;
+      if (e.deltaY > 0 && viewer.scrollTop + viewer.clientHeight >= viewer.scrollHeight - 4 && pageNum < pdf.numPages) {
+        pageNum++; render(pageNum);
+      } else if (e.deltaY < 0 && viewer.scrollTop <= 4 && pageNum > 1) {
+        pageNum--; render(pageNum);
+      }
+    }, { passive:true });
+
+    pdfjsLib.getDocument(PDF_URL).promise.then(doc => {
+      pdf = doc;
+      pageCountEl.textContent = doc.numPages;
+      render(pageNum);
+    }).catch(err => {
+      ctx.font = "16px sans-serif"; ctx.fillStyle = "#fff";
+      ctx.fillText("Failed to load PDF.", 20, 30);
+      console.error(err);
+    });
+  </script>
+</body>
+</html>
