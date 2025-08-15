@@ -3,117 +3,83 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>PDF (Simple Viewer)</title>
+<title>PDF Viewer (Continuous)</title>
 <style>
-  :root { --maxw: 900px; }
-  body { margin: 0; background:#111; color:#eee; font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
+  :root { --maxw: 1200px; }
+  html, body { height:100%; }
+  body { margin:0; background:#fff; color:#111; font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
   .wrap { max-width: var(--maxw); margin: 0 auto; }
   .toolbar {
     display:flex; align-items:center; justify-content:center; gap:12px;
-    position: sticky; top:0; z-index:10; padding:10px; background:#181818; border-bottom:1px solid #222;
+    position: sticky; top:0; z-index:10; padding:10px; background:#fff; border-bottom:1px solid #e7e7e7;
   }
-  button { background:#2a2a2a; color:#eee; border:1px solid #333; padding:6px 10px; border-radius:6px; cursor:pointer; }
-  button:disabled { opacity:.5; cursor:not-allowed; }
-  .pageinfo { opacity:.85; font-size:14px; min-width:90px; text-align:center; }
-  #viewer { height: 90vh; overflow:auto; -webkit-overflow-scrolling:touch; display:flex; justify-content:center; }
-  canvas { background:#fff; margin:14px 0; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+  button { background:#f4f4f4; color:#111; border:1px solid #ddd; padding:6px 10px; border-radius:6px; cursor:pointer; }
+  .pageinfo { opacity:.8; font-size:14px; min-width:90px; text-align:center; }
+  #viewer { height: 90vh; overflow:auto; -webkit-overflow-scrolling:touch; background:#fff; }
+  .page { display:block; margin:0 auto; background:#fff; }
 </style>
 </head>
 <body>
   <div class="wrap">
     <div class="toolbar">
-      <button id="prev" type="button" aria-label="Previous page">◀ Prev</button>
-      <div class="pageinfo"><span id="pageNum">1</span> / <span id="pageCount">?</span></div>
-      <button id="next" type="button" aria-label="Next page">Next ▶</button>
       <button id="zoomOut" type="button" aria-label="Zoom out">−</button>
+      <div class="pageinfo" id="pageInfo">Loading…</div>
       <button id="zoomIn" type="button" aria-label="Zoom in">+</button>
     </div>
-    <div id="viewer"><canvas id="page"></canvas></div>
+    <div id="viewer"></div>
   </div>
 
-  <!-- PDF.js from CDN -->
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script>
-    // Worker path for PDF.js
     pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
-
-    // Your PDF (jsDelivr link to exact commit)
     const PDF_URL = "https://cdn.jsdelivr.net/gh/jonasthane/Red-to-the-wrist@1667fdace2cfa0065cedb83f384b1e3f24c9a9cf/Red-to-the-wrist.pdf";
 
-    // UI elements
-    const canvas = document.getElementById('page');
-    const ctx = canvas.getContext('2d');
-    const pageNumEl = document.getElementById('pageNum');
-    const pageCountEl = document.getElementById('pageCount');
-    const prevBtn = document.getElementById('prev');
-    const nextBtn = document.getElementById('next');
+    const viewer = document.getElementById('viewer');
+    const info = document.getElementById('pageInfo');
     const zoomInBtn = document.getElementById('zoomIn');
     const zoomOutBtn = document.getElementById('zoomOut');
 
-    // State
-    let pdf = null, pageNum = 1, scale = 1.1;
-    const MIN = 0.6, MAX = 3.0;
+    let pdf = null, scale = 1.0;
+    const MIN = 0.6, MAX = 2.0;
 
-    function updateButtons() {
-      prevBtn.disabled = (pageNum <= 1);
-      nextBtn.disabled = (!pdf || pageNum >= pdf.numPages);
-    }
+    function renderAll() {
+      viewer.innerHTML = "";
+      const contWidth = Math.min(viewer.clientWidth, parseInt(getComputedStyle(document.documentElement).getPropertyValue('--maxw')));
+      for (let i = 1; i <= pdf.numPages; i++) {
+        pdf.getPage(i).then(page => {
+          const base = page.getViewport({ scale: 1 });
+          const fitScale = contWidth / base.width;
+          const vp = page.getViewport({ scale: fitScale * scale });
 
-    function render(num) {
-      if (!pdf) return;
-      pdf.getPage(num).then(p => {
-        const viewport = p.getViewport({ scale });
-        // Fit width to viewport (cap at 900px)
-        const targetW = Math.min(viewport.width, window.innerWidth * 0.98, 900);
-        const fitScale = targetW / viewport.width;
-        const vpf = p.getViewport({ scale: scale * fitScale });
-        canvas.width = vpf.width;
-        canvas.height = vpf.height;
-        p.render({ canvasContext: ctx, viewport: vpf }).promise.then(() => {
-          pageNumEl.textContent = num;
-          updateButtons();
+          const canvas = document.createElement('canvas');
+          canvas.className = "page";
+          canvas.width = vp.width;
+          canvas.height = vp.height;
+          const ctx = canvas.getContext('2d');
+
+          page.render({ canvasContext: ctx, viewport: vp });
+          viewer.appendChild(canvas);
+
+          info.textContent = `${pdf.numPages} pages`;
         });
-      }).catch(console.error);
-    }
-
-    function gotoPage(n) {
-      if (!pdf) return;
-      const clamped = Math.max(1, Math.min(pdf.numPages, n));
-      if (clamped !== pageNum) {
-        pageNum = clamped;
-        render(pageNum);
-        document.getElementById('viewer').scrollTop = 0;
       }
     }
 
     function zoom(delta) {
       scale = Math.max(MIN, Math.min(MAX, scale + delta));
-      render(pageNum);
+      renderAll();
     }
 
-    // Events
-    prevBtn.addEventListener('click', () => gotoPage(pageNum - 1));
-    nextBtn.addEventListener('click', () => gotoPage(pageNum + 1));
-    zoomInBtn.addEventListener('click', () => zoom(0.15));
-    zoomOutBtn.addEventListener('click', () => zoom(-0.15));
-    window.addEventListener('resize', () => render(pageNum));
-    window.addEventListener('keydown', (e) => {
-      if (!pdf) return;
-      if (e.key === 'ArrowRight') gotoPage(pageNum + 1);
-      else if (e.key === 'ArrowLeft') gotoPage(pageNum - 1);
-      else if (e.key === '+' || e.key === '=') zoom(0.15);
-      else if (e.key === '-' || e.key === '_') zoom(-0.15);
-    });
+    zoomInBtn.onclick = () => zoom(0.15);
+    zoomOutBtn.onclick = () => zoom(-0.15);
+    window.addEventListener('resize', () => renderAll());
 
-    // Load
     pdfjsLib.getDocument(PDF_URL).promise.then(doc => {
       pdf = doc;
-      pageCountEl.textContent = doc.numPages;
-      updateButtons();
-      render(pageNum);
+      info.textContent = `${pdf.numPages} pages`;
+      renderAll();
     }).catch(err => {
-      ctx.font = "16px sans-serif"; ctx.fillStyle = "#fff";
-      ctx.fillText("Failed to load PDF.", 20, 30);
+      info.textContent = "Failed to load.";
       console.error(err);
     });
   </script>
